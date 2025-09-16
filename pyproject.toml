@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "monty-hall-simulator"
+version = "3.0.0"
+description = "A Monty Hall problem simulator with beautiful TUI"
+authors = [
+    {name = "Your Name", email = "your.email@example.com"},
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Games/Entertainment",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+dependencies = [
+    "textual>=0.41.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/monty-hall-simulator"
+Repository = "https://github.com/yourusername/monty-hall-simulator.git"
+Issues = "https://github.com/yourusername/monty-hall-simulator/issues"
+
+[project.scripts]
+monty-hall = "monty_hall_simulator:main"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.0.0",
+    "black>=22.0.0",
+    "isort>=5.0.0",
+    "flake8>=4.0.0",
+]
