@@ -1,15 +1,12 @@
 # Monty Hall Simulator
 
-A beautiful terminal-based simulator for the famous Monty Hall probability puzzle, featuring both interactive gameplay and statistical simulations.
-
-![Main Screen](https://github.com/matchagradient/monty-hall-sim-textual/blob/main/images/montyhall-main-screen.png)
+A terminal-based simulator for the famous Monty Hall probability puzzle, featuring both interactive gameplay and statistical simulations.
 
 ## Features
 
 - **Interactive TUI**: Play the Monty Hall game with an intuitive terminal interface
-- **Statistical Simulation**: Run large-scale simulations to verify the probabilities
+- **Statistical Simulation**: Run simulations to verify the probabilities for yourself
 - **Customizable Parameters**: Adjust the number of doors and simulation runs
-- **Educational**: Learn about the counter-intuitive statistics behind the puzzle
 - **Command-line Interface**: Quick simulations for scripting or analysis
 
 ## Installation
@@ -142,6 +139,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Uses [uv](https://github.com/astral-sh/uv) for fast Python package management
 
 ## Screenshots
+
+![Main Screen](images/montyhall-main-screen.png)
 
 Interactive gameplay:
 
