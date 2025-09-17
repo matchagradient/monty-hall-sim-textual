@@ -7,9 +7,19 @@ from typing import Optional
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, Center
 from textual.widgets import (
-    Header, Footer, Button, Static, Input, Label, 
-    ProgressBar, DataTable, Tabs, TabPane, Pretty,
-    Collapsible, Rule
+    Header,
+    Footer,
+    Button,
+    Static,
+    Input,
+    Label,
+    ProgressBar,
+    DataTable,
+    Tabs,
+    TabPane,
+    Pretty,
+    Collapsible,
+    Rule,
 )
 from textual.screen import Screen, ModalScreen
 from textual.binding import Binding
@@ -19,6 +29,7 @@ from textual import events
 
 class SimulationResults:
     """Store and manage simulation results"""
+
     def __init__(self, num_games: int, num_doors: int):
         self.num_games = num_games
         self.num_doors = num_doors
@@ -26,19 +37,19 @@ class SimulationResults:
         self.stay_wins = 0
         self.car_door_counts = {i: 0 for i in range(num_doors)}
         self.player_choice_counts = {i: 0 for i in range(num_doors)}
-        
+
     @property
     def switch_rate(self) -> float:
         return self.switch_wins / self.num_games if self.num_games > 0 else 0
-        
+
     @property
     def stay_rate(self) -> float:
         return self.stay_wins / self.num_games if self.num_games > 0 else 0
-        
+
     @property
     def theoretical_switch_rate(self) -> float:
         return (self.num_doors - 1) / self.num_doors
-        
+
     @property
     def theoretical_stay_rate(self) -> float:
         return 1 / self.num_doors
@@ -46,6 +57,7 @@ class SimulationResults:
 
 class GameState:
     """Manage the state of an interactive game"""
+
     def __init__(self, num_doors: int):
         self.num_doors = num_doors
         self.car_door = random.randint(0, num_doors - 1)
@@ -53,18 +65,18 @@ class GameState:
         self.doors_opened = set()
         self.final_choice: Optional[int] = None
         self.game_over = False
-        
+
     def make_initial_choice(self, door: int) -> bool:
         if 0 <= door < self.num_doors and self.player_choice is None:
             self.player_choice = door
             return True
         return False
-    
+
     def open_doors_by_monty(self):
         """Monty opens all doors except car door and one other"""
         if self.player_choice is None:
             return
-            
+
         doors_to_keep_closed = {self.car_door}
         if self.player_choice != self.car_door:
             doors_to_keep_closed.add(self.player_choice)
@@ -72,96 +84,102 @@ class GameState:
             # If player chose car door, keep one random other door closed
             other_doors = [i for i in range(self.num_doors) if i != self.car_door]
             doors_to_keep_closed.add(random.choice(other_doors))
-        
+
         for door in range(self.num_doors):
             if door not in doors_to_keep_closed:
                 self.doors_opened.add(door)
-    
+
     def get_available_doors(self) -> list[int]:
         """Get doors that are still available to choose"""
         return [i for i in range(self.num_doors) if i not in self.doors_opened]
-    
+
     def make_final_choice(self, door: int) -> bool:
         if door in self.get_available_doors():
             self.final_choice = door
             self.game_over = True
             return True
         return False
-    
+
     def did_player_win(self) -> bool:
-        return self.final_choice == self.car_door if self.final_choice is not None else False
+        return (
+            self.final_choice == self.car_door
+            if self.final_choice is not None
+            else False
+        )
 
 
 class SimulationScreen(Screen):
     """Screen for running statistical simulations"""
-    
-    BINDINGS = [
-        Binding("escape", "back", "Back to Menu")
-    ]
-    
+
+    BINDINGS = [Binding("escape", "back", "Back to Menu")]
+
     def __init__(self, num_games: int = 10000, num_doors: int = 3):
         super().__init__()
         self.num_games = num_games
         self.num_doors = num_doors
         self.results: Optional[SimulationResults] = None
-    
+
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         yield Container(
-            Static(f"[bold blue]Statistical Simulation[/] - {self.num_games:,} games with {self.num_doors} doors", 
-                   classes="title"),
+            Static(
+                f"[bold blue]Statistical Simulation[/] - {self.num_games:,} games with {self.num_doors} doors",
+                classes="title",
+            ),
             Rule(),
             Static("Running simulation...", id="status"),
             ProgressBar(id="progress"),
             Container(id="results-container"),
-            classes="simulation-screen"
+            classes="simulation-screen",
         )
         yield Footer()
-    
+
     async def on_mount(self) -> None:
         await self.run_simulation()
-    
+
     async def run_simulation(self):
         """Run the simulation with progress updates"""
         self.results = SimulationResults(self.num_games, self.num_doors)
         progress = self.query_one("#progress", ProgressBar)
         status = self.query_one("#status", Static)
-        
+
         # Run simulation in batches for progress updates
         batch_size = max(1, self.num_games // 100)
         completed = 0
-        
+
         for batch_start in range(0, self.num_games, batch_size):
             batch_end = min(batch_start + batch_size, self.num_games)
-            
+
             # Run batch
             for _ in range(batch_start, batch_end):
                 # Generate game data
                 car_door = random.randint(0, self.num_doors - 1)
                 player_choice = random.randint(0, self.num_doors - 1)
-                
+
                 self.results.car_door_counts[car_door] += 1
                 self.results.player_choice_counts[player_choice] += 1
-                
+
                 # Test switching strategy
                 if self.simulate_game_outcome(True, car_door, player_choice):
                     self.results.switch_wins += 1
-                    
-                # Test staying strategy  
+
+                # Test staying strategy
                 if self.simulate_game_outcome(False, car_door, player_choice):
                     self.results.stay_wins += 1
-                    
+
                 completed += 1
-            
+
             # Update progress
             progress.update(progress=completed / self.num_games * 100)
             status.update(f"Completed {completed:,} / {self.num_games:,} games...")
             await asyncio.sleep(0.01)  # Allow UI updates
-        
+
         # Show results
         await self.show_results()
-    
-    def simulate_game_outcome(self, switch_strategy: bool, car_door: int, player_choice: int) -> bool:
+
+    def simulate_game_outcome(
+        self, switch_strategy: bool, car_door: int, player_choice: int
+    ) -> bool:
         """Simulate a single game outcome"""
         # Determine which doors Monty opens
         doors_to_keep_closed = {car_door}
@@ -170,104 +188,116 @@ class SimulationScreen(Screen):
         else:
             other_doors = [i for i in range(self.num_doors) if i != car_door]
             doors_to_keep_closed.add(random.choice(other_doors))
-        
-        available_doors = [i for i in range(self.num_doors) 
-                          if i in doors_to_keep_closed]
-        
+
+        available_doors = [
+            i for i in range(self.num_doors) if i in doors_to_keep_closed
+        ]
+
         if switch_strategy:
             # Switch to a different available door
             switch_options = [d for d in available_doors if d != player_choice]
-            final_choice = random.choice(switch_options) if switch_options else player_choice
+            final_choice = (
+                random.choice(switch_options) if switch_options else player_choice
+            )
         else:
             # Stay with original choice
             final_choice = player_choice
-            
+
         return final_choice == car_door
-    
+
     async def show_results(self):
         """Display the simulation results"""
         if not self.results:
             return
-            
+
         results_container = self.query_one("#results-container", Container)
         results_container.remove_children()
-        
+
         # Main results
         switch_rate = self.results.switch_rate * 100
         stay_rate = self.results.stay_rate * 100
         theo_switch = self.results.theoretical_switch_rate * 100
         theo_stay = self.results.theoretical_stay_rate * 100
-        
+
         await results_container.mount(
             Static("[bold green]SIMULATION COMPLETE![/]", classes="success"),
             Rule(),
             Static(f"[bold]Strategy Results:[/]"),
-            Static(f"Switch: [green]{switch_rate:.1f}%[/] (theory: {theo_switch:.1f}%)"),
+            Static(
+                f"Switch: [green]{switch_rate:.1f}%[/] (theory: {theo_switch:.1f}%)"
+            ),
             Static(f"Stay:   [red]{stay_rate:.1f}%[/] (theory: {theo_stay:.1f}%)"),
             Static(f"Switch advantage: [bold]{switch_rate/stay_rate:.1f}x[/]"),
             Rule(),
             Collapsible(
                 self.create_detailed_stats(),
                 title="Detailed Statistics",
-                collapsed=False
-            )
+                collapsed=False,
+            ),
         )
-        
-        self.query_one("#status", Static).update("[bold green]Simulation complete![/] Press ESC to return to menu.")
-    
+
+        self.query_one("#status", Static).update(
+            "[bold green]Simulation complete![/] Press ESC to return to menu."
+        )
+
     def create_detailed_stats(self) -> Container:
         """Create detailed statistics display"""
         if not self.results:
             return Container()
-            
+
         # Create data table for door distributions
         table = DataTable()
         table.add_column("Door", width=8)
         table.add_column("Car Location", width=15)
         table.add_column("Player Choice", width=15)
         table.add_column("Expected %", width=12)
-        
+
         expected_pct = 100 / self.num_doors
         for door in range(self.num_doors):
-            car_pct = (self.results.car_door_counts[door] / self.results.num_games) * 100
-            choice_pct = (self.results.player_choice_counts[door] / self.results.num_games) * 100
-            
+            car_pct = (
+                self.results.car_door_counts[door] / self.results.num_games
+            ) * 100
+            choice_pct = (
+                self.results.player_choice_counts[door] / self.results.num_games
+            ) * 100
+
             table.add_row(
                 str(door),
                 f"{car_pct:.1f}%",
-                f"{choice_pct:.1f}%", 
-                f"{expected_pct:.1f}%"
+                f"{choice_pct:.1f}%",
+                f"{expected_pct:.1f}%",
             )
-        
+
         return Container(
             Static("[bold]Door Distribution Analysis:[/]"),
             table,
-            classes="stats-container"
+            classes="stats-container",
         )
-    
+
     def action_back(self) -> None:
         self.app.pop_screen()
 
+
 class InteractiveGameScreen(Screen):
     """Screen for playing the interactive Monty Hall game"""
-    
-    BINDINGS = [
-        Binding("escape", "back", "Back to Menu")
-    ]
-    
+
+    BINDINGS = [Binding("escape", "back", "Back to Menu")]
+
     def __init__(self, num_doors: int = 3):
         super().__init__()
         self.num_doors = num_doors
-        
+
         # Game state for current game
         self.car_door = None
         self.initial_choice = None
         self.doors_opened_by_host = set()
         self.final_choice = None
-        self.game_phase = "initial"  # "initial", "host_opens", "final_choice", "game_over"
+        self.game_phase = (
+            "initial"  # "initial", "host_opens", "final_choice", "game_over"
+        )
         self.countdown_active = False
         self.countdown_seconds = 0
-        
+
         # Overall statistics tracking
         self.total_games = 0
         self.total_wins = 0
@@ -276,31 +306,33 @@ class InteractiveGameScreen(Screen):
         self.switch_losses = 0
         self.stay_wins = 0
         self.stay_losses = 0
-        
+
         # Round tracking
         self.current_round = 1
         self.games_in_current_round = 0
         self.wins_in_current_round = 0
         self.rounds_played = 0
         self.rounds_won = 0
-        
-    
+
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         yield Container(
-            Static(f"[bold blue]Interactive Monty Hall Game[/] - {self.num_doors} doors", classes="title"),
+            Static(
+                f"[bold blue]Interactive Monty Hall Game[/] - {self.num_doors} doors",
+                classes="title",
+            ),
             Rule(),
             Container(id="game-container"),
             Container(id="stats-container"),  # Only one container for all stats
-            classes="game-screen"
+            classes="game-screen",
         )
         yield Footer()
-    
+
     async def on_mount(self) -> None:
         await self.start_new_game()
         self.update_stats_display()
         self.update_round_display()
-    
+
     async def start_new_game(self):
         """Start a new game"""
         print(f"DEBUG: Starting new game in round {self.current_round}")
@@ -311,9 +343,11 @@ class InteractiveGameScreen(Screen):
         self.game_phase = "initial"
         self.games_in_current_round += 1
         print(f"DEBUG: Car is behind door {self.car_door}")
-        print(f"DEBUG: Game #{self.games_in_current_round} in round {self.current_round}")
+        print(
+            f"DEBUG: Game #{self.games_in_current_round} in round {self.current_round}"
+        )
         await self.show_game_interface()
-    
+
     async def start_new_round(self):
         """Start a new round - check if current round was won, then reset round stats"""
         print(f"DEBUG: Starting new round (was round {self.current_round})")
@@ -322,10 +356,14 @@ class InteractiveGameScreen(Screen):
             self.rounds_played += 1
             if self.wins_in_current_round > self.games_in_current_round / 2:
                 self.rounds_won += 1
-                print(f"DEBUG: Round {self.current_round} was WON ({self.wins_in_current_round}/{self.games_in_current_round})")
+                print(
+                    f"DEBUG: Round {self.current_round} was WON ({self.wins_in_current_round}/{self.games_in_current_round})"
+                )
             else:
-                print(f"DEBUG: Round {self.current_round} was LOST ({self.wins_in_current_round}/{self.games_in_current_round})")
-        
+                print(
+                    f"DEBUG: Round {self.current_round} was LOST ({self.wins_in_current_round}/{self.games_in_current_round})"
+                )
+
         # Start new round
         self.current_round += 1
         self.games_in_current_round = 0
@@ -333,7 +371,7 @@ class InteractiveGameScreen(Screen):
         print(f"DEBUG: Now starting round {self.current_round}")
         self.update_round_display()
         await self.start_new_game()
-    
+
     async def restart_current_round(self):
         """Restart the current round - reset round stats but keep round number"""
         print(f"DEBUG: Restarting current round {self.current_round}")
@@ -341,62 +379,84 @@ class InteractiveGameScreen(Screen):
         self.wins_in_current_round = 0
         self.update_round_display()
         await self.start_new_game()
-    
+
     def update_stats_display(self):
         """Update the statistics display with all information combined"""
         stats_container = self.query_one("#stats-container", Container)
         stats_container.remove_children()
-        
+
         # Calculate statistics
-        win_rate = (self.total_wins / self.total_games * 100) if self.total_games > 0 else 0
-        switch_win_rate = (self.switch_wins / (self.switch_wins + self.switch_losses) * 100) if (self.switch_wins + self.switch_losses) > 0 else 0
-        stay_win_rate = (self.stay_wins / (self.stay_wins + self.stay_losses) * 100) if (self.stay_wins + self.stay_losses) > 0 else 0
-        
+        win_rate = (
+            (self.total_wins / self.total_games * 100) if self.total_games > 0 else 0
+        )
+        switch_win_rate = (
+            (self.switch_wins / (self.switch_wins + self.switch_losses) * 100)
+            if (self.switch_wins + self.switch_losses) > 0
+            else 0
+        )
+        stay_win_rate = (
+            (self.stay_wins / (self.stay_wins + self.stay_losses) * 100)
+            if (self.stay_wins + self.stay_losses) > 0
+            else 0
+        )
+
         # Get round statistics
-        round_win_rate = (self.wins_in_current_round / self.games_in_current_round * 100) if self.games_in_current_round > 0 else 0
-        overall_round_win_rate = (self.rounds_won / self.rounds_played * 100) if self.rounds_played > 0 else 0
-        
+        round_win_rate = (
+            (self.wins_in_current_round / self.games_in_current_round * 100)
+            if self.games_in_current_round > 0
+            else 0
+        )
+        overall_round_win_rate = (
+            (self.rounds_won / self.rounds_played * 100)
+            if self.rounds_played > 0
+            else 0
+        )
+
         # Create buttons container
         buttons_container = Horizontal(
             Button("New Game", id="new-game", classes="round-button"),
             Button("Restart Round", id="restart-round", classes="round-button"),
             Button("New Round", id="new-round", classes="round-button"),
-            classes="round-buttons"
+            classes="round-buttons",
         )
-        
+
         # Mount all elements in one container
         stats_container.mount(
             Rule(),
             Static("[bold]Game Statistics:[/]", classes="stats-title"),
             Static(f"Total games: {self.total_games}"),
             Static(f"Total wins: {self.total_wins} ({win_rate:.1f}%)"),
-            Static(f"Switch strategy: {self.switch_wins}W-{self.switch_losses}L ({switch_win_rate:.1f}%)"),
-            Static(f"Stay strategy: {self.stay_wins}W-{self.stay_losses}L ({stay_win_rate:.1f}%)"),
+            Static(
+                f"Switch strategy: {self.switch_wins}W-{self.switch_losses}L ({switch_win_rate:.1f}%)"
+            ),
+            Static(
+                f"Stay strategy: {self.stay_wins}W-{self.stay_losses}L ({stay_win_rate:.1f}%)"
+            ),
             Rule(),
             Static("[bold]Current Round:[/]", classes="round-title"),
             Static(f"Round #{self.current_round}"),
             Static(f"Games in round: {self.games_in_current_round}"),
-            Static(f"Wins in round: {self.wins_in_current_round} ({round_win_rate:.1f}%)"),
+            Static(
+                f"Wins in round: {self.wins_in_current_round} ({round_win_rate:.1f}%)"
+            ),
             Rule(),
             Static("[bold]Round History:[/]", classes="round-title"),
             Static(f"Rounds played: {self.rounds_played}"),
             Static(f"Rounds won: {self.rounds_won} ({overall_round_win_rate:.1f}%)"),
             buttons_container,
-            Rule()
+            Rule(),
         )
         self.refresh()
-    
-    
+
     def update_round_display(self):
         """Update the round information display - now combined with stats"""
         self.update_stats_display()
-        
-   
+
     async def show_game_interface(self):
         """Show the main game interface based on current phase"""
         game_container = self.query_one("#game-container", Container)
         game_container.remove_children()
-        
+
         if self.game_phase == "initial":
             await self.show_initial_choice()
         elif self.game_phase == "host_opens":
@@ -405,34 +465,42 @@ class InteractiveGameScreen(Screen):
             await self.show_final_choice()
         elif self.game_phase == "game_over":
             await self.show_game_result()
-    
+
     async def show_initial_choice(self):
         """Show initial door selection phase"""
         game_container = self.query_one("#game-container", Container)
-        
+
         # Create door buttons
         door_buttons = []
         for i in range(self.num_doors):
-            door_buttons.append(Button(f"Door {i}", id=f"door-{i}", classes="door-button"))
+            door_buttons.append(
+                Button(f"Door {i}", id=f"door-{i}", classes="door-button")
+            )
         doors_container = Horizontal(*door_buttons, classes="doors-container")
-        
+
         prob_correct = (1 / self.num_doors) * 100
         prob_others = ((self.num_doors - 1) / self.num_doors) * 100
-        
+
         await game_container.mount(
-            Static(f"[bold]Round #{self.current_round} - Game #{self.games_in_current_round}[/]"),
+            Static(
+                f"[bold]Round #{self.current_round} - Game #{self.games_in_current_round}[/]"
+            ),
             Static("[bold]Phase 1: Choose your initial door[/]"),
             doors_container,
             Static("🚗 One door has a car, the others have goats! 🐐"),
             Rule(),
-            Static(f"💡 [dim]Your choice has {prob_correct:.1f}% chance of being correct[/]"),
-            Static(f"💡 [dim]The other {self.num_doors-1} doors combined have {prob_others:.1f}% chance[/]")
+            Static(
+                f"💡 [dim]Your choice has {prob_correct:.1f}% chance of being correct[/]"
+            ),
+            Static(
+                f"💡 [dim]The other {self.num_doors-1} doors combined have {prob_others:.1f}% chance[/]"
+            ),
         )
-    
+
     async def show_host_opens(self):
         """Show host opening doors phase"""
         game_container = self.query_one("#game-container", Container)
-        
+
         # Host opens N-2 doors (all doors except player's choice and one other)
         doors_to_keep_closed = {self.car_door}
         if self.initial_choice != self.car_door:
@@ -442,12 +510,12 @@ class InteractiveGameScreen(Screen):
             # If player chose car, keep one random other door closed
             other_doors = [i for i in range(self.num_doors) if i != self.car_door]
             doors_to_keep_closed.add(random.choice(other_doors))
-        
+
         # Open all other doors
         for door in range(self.num_doors):
             if door not in doors_to_keep_closed:
                 self.doors_opened_by_host.add(door)
-        
+
         # Show door states
         door_displays = []
         for i in range(self.num_doors):
@@ -457,29 +525,41 @@ class InteractiveGameScreen(Screen):
                 door_displays.append(f"[red]Door {i}: 🐐 GOAT (opened by host)[/]")
             else:
                 door_displays.append(f"[yellow]Door {i}: ? UNKNOWN[/]")
-        
+
         doors_text = "\n".join(door_displays)
-        
-        remaining_doors = [i for i in range(self.num_doors) if i not in self.doors_opened_by_host]
+
+        remaining_doors = [
+            i for i in range(self.num_doors) if i not in self.doors_opened_by_host
+        ]
         other_door = [d for d in remaining_doors if d != self.initial_choice][0]
-        
+
         await game_container.mount(
-            Static(f"[bold]Round #{self.current_round} - Game #{self.games_in_current_round}[/]"),
+            Static(
+                f"[bold]Round #{self.current_round} - Game #{self.games_in_current_round}[/]"
+            ),
             Static("[bold]Phase 2: Host opens doors with goats[/]"),
             Static(doors_text),
             Rule(),
-            Static(f"[bold]The host opened {len(self.doors_opened_by_host)} doors with goats![/]"),
-            Static(f"[bold]Only 2 doors remain: your choice (Door {self.initial_choice}) and Door {other_door}[/]"),
-            Button("Continue to Final Choice", id="continue", classes="continue-button")
+            Static(
+                f"[bold]The host opened {len(self.doors_opened_by_host)} doors with goats![/]"
+            ),
+            Static(
+                f"[bold]Only 2 doors remain: your choice (Door {self.initial_choice}) and Door {other_door}[/]"
+            ),
+            Button(
+                "Continue to Final Choice", id="continue", classes="continue-button"
+            ),
         )
-    
+
     async def show_final_choice(self):
         """Show final choice phase (stay or switch)"""
         game_container = self.query_one("#game-container", Container)
-        
-        remaining_doors = [i for i in range(self.num_doors) if i not in self.doors_opened_by_host]
+
+        remaining_doors = [
+            i for i in range(self.num_doors) if i not in self.doors_opened_by_host
+        ]
         other_door = [d for d in remaining_doors if d != self.initial_choice][0]
-        
+
         # Show door states
         door_displays = []
         for i in range(self.num_doors):
@@ -489,43 +569,55 @@ class InteractiveGameScreen(Screen):
                 door_displays.append(f"[dim red]Door {i}: 🐐 GOAT (opened)[/]")
             elif i == other_door:
                 door_displays.append(f"[bold yellow]Door {i}: SWITCH OPTION[/]")
-        
+
         doors_text = "\n".join(door_displays)
-        
+
         prob_stay = (1 / self.num_doors) * 100
         prob_switch = ((self.num_doors - 1) / self.num_doors) * 100
-        
+
         await game_container.mount(
-            Static(f"[bold]Round #{self.current_round} - Game #{self.games_in_current_round}[/]"),
+            Static(
+                f"[bold]Round #{self.current_round} - Game #{self.games_in_current_round}[/]"
+            ),
             Static("[bold]Phase 3: Final Decision - Stay or Switch?[/]"),
             Static(doors_text),
             Rule(),
             Static("[bold]Now you must make your final choice:[/]"),
             Horizontal(
-                Button(f"STAY with Door {self.initial_choice}", id="stay", classes="stay-button"),
-                Button(f"SWITCH to Door {other_door}", id="switch", classes="switch-button")
+                Button(
+                    f"STAY with Door {self.initial_choice}",
+                    id="stay",
+                    classes="stay-button",
+                ),
+                Button(
+                    f"SWITCH to Door {other_door}", id="switch", classes="switch-button"
+                ),
             ),
             Rule(),
             Static(f"💡 [dim]Probability of winning if you STAY: {prob_stay:.1f}%[/]"),
-            Static(f"💡 [dim]Probability of winning if you SWITCH: {prob_switch:.1f}%[/]")
+            Static(
+                f"💡 [dim]Probability of winning if you SWITCH: {prob_switch:.1f}%[/]"
+            ),
         )
-    
+
     async def show_game_result(self):
         """Show the final game result"""
         game_container = self.query_one("#game-container", Container)
-        
+
         if self.countdown_active:
             if self.final_choice == self.car_door:
                 status_msg = f"[bold green]🎉 YOU WON! 🎉 Next game starting in {self.countdown_seconds} seconds...[/]"
             else:
                 status_msg = f"[bold red]😞 You lost. Next game starting in {self.countdown_seconds} seconds...[/]"
         else:
-            won = (self.final_choice == self.car_door)
+            won = self.final_choice == self.car_door
             if won:
                 status_msg = "[bold green]🎉 CONGRATULATIONS! YOU WON THE CAR! 🎉[/]"
             else:
-                status_msg = "[bold red]😞 Sorry, you got a goat. Better luck next time![/]"
-        
+                status_msg = (
+                    "[bold red]😞 Sorry, you got a goat. Better luck next time![/]"
+                )
+
         # Show all door contents
         door_reveals = []
         for i in range(self.num_doors):
@@ -533,23 +625,27 @@ class InteractiveGameScreen(Screen):
                 door_reveals.append(f"[bold green]Door {i}: 🚗 CAR[/]")
             else:
                 door_reveals.append(f"[red]Door {i}: 🐐 GOAT[/]")
-        
+
         doors_text = "\n".join(door_reveals)
-        
+
         strategy = "SWITCHED" if self.final_choice != self.initial_choice else "STAYED"
-        
+
         if not self.countdown_active:
             buttons = Horizontal(
                 Button("New Game", id="new-game", classes="play-again-button"),
-                Button("Restart Round", id="restart-round", classes="play-again-button"),
+                Button(
+                    "Restart Round", id="restart-round", classes="play-again-button"
+                ),
                 Button("New Round", id="new-round", classes="play-again-button"),
-                classes="result-buttons"
+                classes="result-buttons",
             )
         else:
             buttons = Container()  # No buttons during countdown
-        
+
         await game_container.mount(
-            Static(f"[bold]Round #{self.current_round} - Game #{self.games_in_current_round}[/]"),
+            Static(
+                f"[bold]Round #{self.current_round} - Game #{self.games_in_current_round}[/]"
+            ),
             Static(status_msg, classes="result-message"),
             Rule(),
             Static("[bold]Final Results:[/]"),
@@ -561,43 +657,47 @@ class InteractiveGameScreen(Screen):
             Static(f"• Strategy: {strategy}"),
             Static(f"• Car was behind: Door {self.car_door}"),
             Rule(),
-            buttons
+            buttons,
         )
-    
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses"""
         button_id = event.button.id or ""
         print(f"DEBUG: Button pressed: {button_id}")
         print(f"DEBUG: game_phase = {self.game_phase}")
         print(f"DEBUG: countdown_active = {self.countdown_active}")
-        
+
         if self.countdown_active:
             print("DEBUG: Ignoring button press - countdown active")
             return
-            
+
         if button_id.startswith("door-") and self.game_phase == "initial":
             door_num = int(button_id.split("-")[1])
             print(f"DEBUG: Initial choice - Door {door_num}")
             self.initial_choice = door_num
             self.game_phase = "host_opens"
             self.call_later(self.show_game_interface)
-            
+
         elif button_id == "continue" and self.game_phase == "host_opens":
             print("DEBUG: Moving to final choice phase")
             self.game_phase = "final_choice"
             self.call_later(self.show_game_interface)
-            
+
         elif button_id == "stay" and self.game_phase == "final_choice":
             print("DEBUG: Player chose to STAY")
             self.final_choice = self.initial_choice
             self.record_game_result("stay")
-            
+
         elif button_id == "switch" and self.game_phase == "final_choice":
             print("DEBUG: Player chose to SWITCH")
-            remaining_doors = [i for i in range(self.num_doors) if i not in self.doors_opened_by_host]
-            self.final_choice = [d for d in remaining_doors if d != self.initial_choice][0]
+            remaining_doors = [
+                i for i in range(self.num_doors) if i not in self.doors_opened_by_host
+            ]
+            self.final_choice = [
+                d for d in remaining_doors if d != self.initial_choice
+            ][0]
             self.record_game_result("switch")
-            
+
         elif button_id == "new-game":
             print("DEBUG: New game button pressed")
             self.call_later(self.start_new_game)
@@ -609,14 +709,14 @@ class InteractiveGameScreen(Screen):
             self.call_later(self.start_new_round)
         else:
             print(f"DEBUG: Unhandled button: {button_id}")
-    
+
     def record_game_result(self, strategy):
         """Record the result of the completed game"""
         print(f"DEBUG: Recording game result - strategy: {strategy}")
-        
+
         self.total_games += 1
-        won = (self.final_choice == self.car_door)
-        
+        won = self.final_choice == self.car_door
+
         if won:
             self.total_wins += 1
             self.wins_in_current_round += 1
@@ -630,44 +730,45 @@ class InteractiveGameScreen(Screen):
                 self.switch_losses += 1
             else:
                 self.stay_losses += 1
-        
+
         self.game_phase = "game_over"
-        
+
         # Update displays
         self.update_stats_display()
         self.update_round_display()
-        
+
         # Always start countdown (for both wins and losses)
         self.run_worker(self.start_game_countdown(won), exclusive=True)
-    
+
     async def start_game_countdown(self, won):
         """Start 5-second countdown after game ends, then start new game"""
         print(f"DEBUG: Starting game countdown - won: {won}")
         self.countdown_active = True
         self.countdown_seconds = 5
-        
+
         # Update displays to show the result
         await self.show_game_interface()
-        
+
         # Countdown loop
         for i in range(5, 0, -1):
             print(f"DEBUG: Countdown: {i}")
             self.countdown_seconds = i
             await self.show_game_interface()
             await asyncio.sleep(1)
-        
+
         # Reset countdown and start new game
         print("DEBUG: Countdown finished, starting new game")
         self.countdown_active = False
         self.countdown_seconds = 0
         await self.start_new_game()
-    
+
     def action_back(self) -> None:
         self.app.pop_screen()
 
+
 class SettingsModal(ModalScreen[tuple[int, int]]):
     """Modal for simulation settings"""
-    
+
     def compose(self) -> ComposeResult:
         yield Container(
             Static("[bold]Simulation Settings[/]", classes="modal-title"),
@@ -680,16 +781,16 @@ class SettingsModal(ModalScreen[tuple[int, int]]):
             Horizontal(
                 Button("Start Simulation", variant="primary", id="start"),
                 Button("Cancel", id="cancel"),
-                classes="button-row"
+                classes="button-row",
             ),
-            classes="settings-modal"
+            classes="settings-modal",
         )
-    
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "start":
             doors_input = self.query_one("#doors-input", Input)
-            games_input = self.query_one("#games-input", Input) 
-            
+            games_input = self.query_one("#games-input", Input)
+
             try:
                 doors = max(3, int(doors_input.value))
                 games = max(1, int(games_input.value))
@@ -703,7 +804,7 @@ class SettingsModal(ModalScreen[tuple[int, int]]):
 
 class GameSettingsModal(ModalScreen[int]):
     """Modal for interactive game settings"""
-    
+
     def compose(self) -> ComposeResult:
         yield Container(
             Static("[bold]Game Settings[/]", classes="modal-title"),
@@ -714,15 +815,15 @@ class GameSettingsModal(ModalScreen[int]):
             Horizontal(
                 Button("Start Game", variant="primary", id="start"),
                 Button("Cancel", id="cancel"),
-                classes="button-row"
+                classes="button-row",
             ),
-            classes="settings-modal"
+            classes="settings-modal",
         )
-    
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "start":
             doors_input = self.query_one("#doors-input", Input)
-            
+
             try:
                 doors = max(3, int(doors_input.value))
                 self.dismiss(doors)
@@ -734,7 +835,7 @@ class GameSettingsModal(ModalScreen[int]):
 
 class MontyHallApp(App):
     """Main Monty Hall TUI Application"""
-    
+
     CSS = """
     .title {
         text-align: center;
@@ -848,12 +949,9 @@ class MontyHallApp(App):
         padding: 1;
     }
     """
-    
-    BINDINGS = [
-        Binding("q", "quit", "Quit"),
-        Binding("ctrl+c", "quit", "Quit")
-    ]
-    
+
+    BINDINGS = [Binding("q", "quit", "Quit"), Binding("ctrl+c", "quit", "Quit")]
+
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         yield Container(
@@ -861,38 +959,44 @@ class MontyHallApp(App):
             Static("[dim]The famous probability puzzle![/]", classes="title"),
             Rule(),
             Container(
-                Button("📊 Statistical Simulation", id="simulation", classes="menu-button"),
-                Button("🎮 Interactive Game", id="game", classes="menu-button"), 
+                Button(
+                    "📊 Statistical Simulation", id="simulation", classes="menu-button"
+                ),
+                Button("🎮 Interactive Game", id="game", classes="menu-button"),
                 Button("❓ About", id="about", classes="menu-button"),
                 Button("🚪 Quit", id="quit", classes="menu-button"),
-                classes="menu-container"
+                classes="menu-container",
             ),
-            classes="main-menu"
+            classes="main-menu",
         )
         yield Footer()
-    
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         button_id = event.button.id
-        
+
         if button_id == "simulation":
+
             def check_simulation_result(result):
                 if result:
                     games, doors = result
                     self.push_screen(SimulationScreen(games, doors))
+
             self.push_screen(SettingsModal(), check_simulation_result)
-                
+
         elif button_id == "game":
+
             def check_game_result(doors):
                 if doors:
                     self.push_screen(InteractiveGameScreen(doors))
+
             self.push_screen(GameSettingsModal(), check_game_result)
-                
+
         elif button_id == "about":
             self.show_about()
-            
+
         elif button_id == "quit":
             self.exit()
-    
+
     def show_about(self):
         """Show about information"""
         about_text = """[bold blue]The Monty Hall Problem[/bold blue]
@@ -916,22 +1020,21 @@ With more doors, this effect becomes even more dramatic. With 100 doors, staying
 This simulator lets you run statistical simulations and play interactively to experience the puzzle firsthand.
 
 Press ESC to return to the menu."""
-        
+
         # Create a simple screen for about info
         class AboutScreen(Screen):
             BINDINGS = [Binding("escape", "back", "Back")]
-            
+
             def compose(self):
                 yield Header()
                 yield Container(
-                    Static(about_text, classes="about-text"),
-                    classes="about-container"
+                    Static(about_text, classes="about-text"), classes="about-container"
                 )
                 yield Footer()
-            
+
             def action_back(self):
                 self.app.pop_screen()
-        
+
         self.push_screen(AboutScreen())
 
 
@@ -939,7 +1042,7 @@ def monty_hall_game_simple(switch_strategy: bool, num_doors: int = 3) -> bool:
     """Simple version for command line mode"""
     car_door = random.randint(0, num_doors - 1)
     player_choice = random.randint(0, num_doors - 1)
-    
+
     # Monty's doors
     doors_to_keep_closed = {car_door}
     if player_choice != car_door:
@@ -947,15 +1050,17 @@ def monty_hall_game_simple(switch_strategy: bool, num_doors: int = 3) -> bool:
     else:
         other_doors = [i for i in range(num_doors) if i != car_door]
         doors_to_keep_closed.add(random.choice(other_doors))
-    
+
     available_doors = list(doors_to_keep_closed)
-    
+
     if switch_strategy:
         switch_options = [d for d in available_doors if d != player_choice]
-        final_choice = random.choice(switch_options) if switch_options else player_choice
+        final_choice = (
+            random.choice(switch_options) if switch_options else player_choice
+        )
     else:
         final_choice = player_choice
-        
+
     return final_choice == car_door
 
 
@@ -963,12 +1068,12 @@ def run_simple_simulation(num_games: int, num_doors: int, quiet: bool = False):
     """Simple command-line simulation"""
     switch_wins = sum(monty_hall_game_simple(True, num_doors) for _ in range(num_games))
     stay_wins = sum(monty_hall_game_simple(False, num_doors) for _ in range(num_games))
-    
+
     switch_rate = switch_wins / num_games
     stay_rate = stay_wins / num_games
     theoretical_switch = (num_doors - 1) / num_doors
     theoretical_stay = 1 / num_doors
-    
+
     if quiet:
         print(f"Doors: {num_doors}, Games: {num_games:,}")
         print(f"Switch: {switch_rate:.1%} (theory: {theoretical_switch:.1%})")
@@ -978,8 +1083,12 @@ def run_simple_simulation(num_games: int, num_doors: int, quiet: bool = False):
         print(f"\nMonty Hall Simulation Results:")
         print(f"{'='*50}")
         print(f"Games: {num_games:,} | Doors: {num_doors}")
-        print(f"Switch Strategy: {switch_wins:,} wins ({switch_rate:.1%}) - Theory: {theoretical_switch:.1%}")
-        print(f"Stay Strategy:   {stay_wins:,} wins ({stay_rate:.1%}) - Theory: {theoretical_stay:.1%}")
+        print(
+            f"Switch Strategy: {switch_wins:,} wins ({switch_rate:.1%}) - Theory: {theoretical_switch:.1%}"
+        )
+        print(
+            f"Stay Strategy:   {stay_wins:,} wins ({stay_rate:.1%}) - Theory: {theoretical_stay:.1%}"
+        )
         print(f"Switch Advantage: {switch_rate/stay_rate:.1f}x better")
 
 
@@ -994,48 +1103,51 @@ Examples:
   %(prog)s -s 10000 -d 3            # Quick command-line simulation
   %(prog)s -s 50000 -d 10 -q        # Quiet simulation for scripting
   %(prog)s --tui                    # Force TUI mode
-        """
+        """,
     )
-    
+
     parser.add_argument(
-        '-s', '--simulate',
+        "-s",
+        "--simulate",
         type=int,
-        metavar='GAMES',
-        help='Run command-line simulation with specified number of games'
+        metavar="GAMES",
+        help="Run command-line simulation with specified number of games",
     )
-    
+
     parser.add_argument(
-        '-d', '--doors',
+        "-d",
+        "--doors",
         type=int,
         default=3,
-        metavar='N',
-        help='Number of doors (default: 3, minimum: 3)'
+        metavar="N",
+        help="Number of doors (default: 3, minimum: 3)",
     )
-    
+
     parser.add_argument(
-        '-q', '--quiet',
-        action='store_true',
-        help='Quiet output for command-line simulation'
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="Quiet output for command-line simulation",
     )
-    
+
     parser.add_argument(
-        '--tui',
-        action='store_true',
-        help='Force TUI mode (default when no simulation specified)'
+        "--tui",
+        action="store_true",
+        help="Force TUI mode (default when no simulation specified)",
     )
-    
+
     parser.add_argument(
-        '--version',
-        action='version',
-        version='Monty Hall Simulator v3.0 (with Textual TUI)'
+        "--version",
+        action="version",
+        version="Monty Hall Simulator v3.0 (with Textual TUI)",
     )
-    
+
     args = parser.parse_args()
-    
+
     # Validate doors
     if args.doors < 3:
         parser.error("Number of doors must be at least 3")
-    
+
     # Determine mode
     if args.simulate is not None and not args.tui:
         # Command-line simulation mode
