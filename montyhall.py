@@ -284,13 +284,12 @@ class InteractiveGameScreen(Screen):
         game_container = self.query_one("#game-container", Container)
         game_container.remove_children()
         
-        doors_container = Horizontal(classes="doors-container")
-        
         # Create door buttons
+        door_buttons = []
         for i in range(self.num_doors):
-            doors_container.mount(
-                Button(f"Door {i}", id=f"door-{i}", classes="door-button")
-            )
+            door_buttons.append(Button(f"Door {i}", id=f"door-{i}", classes="door-button"))
+        doors_container = Horizontal(*door_buttons, classes="doors-container")
+
         
         await game_container.mount(
             Static("[bold]Choose your initial door:[/]"),
@@ -301,27 +300,43 @@ class InteractiveGameScreen(Screen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses"""
         if not self.game_state:
+            self.notify("No game state!", severity="error")
             return
             
         button_id = event.button.id or ""
+        
+        # Debug notification to see what's happening
+        self.notify(f"Button clicked: {button_id}")
         
         if button_id.startswith("door-"):
             door_num = int(button_id.split("-")[1])
             
             if self.game_state.player_choice is None:
                 # Initial door selection
-                self.game_state.make_initial_choice(door_num)
-                self.show_monty_opens_doors()
+                self.notify(f"Making initial choice: Door {door_num}")
+                if self.game_state.make_initial_choice(door_num):
+                    self.notify(f"Choice made! Car is at door {self.game_state.car_door}")
+                    self.show_monty_opens_doors()
+                else:
+                    self.notify("Failed to make initial choice", severity="error")
             elif not self.game_state.game_over:
                 # Final choice
+                self.notify(f"Making final choice: Door {door_num}")
                 if self.game_state.make_final_choice(door_num):
                     self.show_game_result()
+                else:
+                    self.notify("Failed to make final choice", severity="error")
         
         elif button_id == "new-game":
+            self.notify("Starting new game")
             self.start_new_game()
         elif button_id == "stay":
-            if self.game_state.make_final_choice(self.game_state.player_choice):
-                self.show_game_result()
+            if self.game_state.player_choice is not None and not self.game_state.game_over:
+                self.notify(f"Staying with door {self.game_state.player_choice}")
+                if self.game_state.make_final_choice(self.game_state.player_choice):
+                    self.show_game_result()
+                else:
+                    self.notify("Failed to stay with choice", severity="error")
     
     async def show_monty_opens_doors(self):
         """Show Monty opening doors"""
