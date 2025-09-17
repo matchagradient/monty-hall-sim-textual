@@ -284,14 +284,14 @@ class InteractiveGameScreen(Screen):
         self.rounds_played = 0
         self.rounds_won = 0
         
+    
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         yield Container(
             Static(f"[bold blue]Interactive Monty Hall Game[/] - {self.num_doors} doors", classes="title"),
             Rule(),
             Container(id="game-container"),
-            Container(id="stats-container"),
-            Container(id="round-container"),
+            Container(id="stats-container"),  # Only one container for all stats
             classes="game-screen"
         )
         yield Footer()
@@ -343,30 +343,16 @@ class InteractiveGameScreen(Screen):
         await self.start_new_game()
     
     def update_stats_display(self):
-        """Update the statistics display"""
+        """Update the statistics display with all information combined"""
         stats_container = self.query_one("#stats-container", Container)
         stats_container.remove_children()
         
+        # Calculate statistics
         win_rate = (self.total_wins / self.total_games * 100) if self.total_games > 0 else 0
         switch_win_rate = (self.switch_wins / (self.switch_wins + self.switch_losses) * 100) if (self.switch_wins + self.switch_losses) > 0 else 0
         stay_win_rate = (self.stay_wins / (self.stay_wins + self.stay_losses) * 100) if (self.stay_wins + self.stay_losses) > 0 else 0
         
-        stats_container.mount(
-            Rule(),
-            Static("[bold]Overall Statistics:[/]", classes="stats-title"),
-            Static(f"Total games: {self.total_games}"),
-            Static(f"Total wins: {self.total_wins} ({win_rate:.1f}%)"),
-            Static(f"Switch strategy: {self.switch_wins}W-{self.switch_losses}L ({switch_win_rate:.1f}%)"),
-            Static(f"Stay strategy: {self.stay_wins}W-{self.stay_losses}L ({stay_win_rate:.1f}%)"),
-            Rule()
-        )
-        self.refresh()
-    
-    def update_round_display(self):
-        """Update the round information display"""
-        round_container = self.query_one("#round-container", Container)
-        round_container.remove_children()
-        
+        # Get round statistics
         round_win_rate = (self.wins_in_current_round / self.games_in_current_round * 100) if self.games_in_current_round > 0 else 0
         overall_round_win_rate = (self.rounds_won / self.rounds_played * 100) if self.rounds_played > 0 else 0
         
@@ -378,8 +364,14 @@ class InteractiveGameScreen(Screen):
             classes="round-buttons"
         )
         
-        # Mount all elements
-        round_container.mount(
+        # Mount all elements in one container
+        stats_container.mount(
+            Rule(),
+            Static("[bold]Game Statistics:[/]", classes="stats-title"),
+            Static(f"Total games: {self.total_games}"),
+            Static(f"Total wins: {self.total_wins} ({win_rate:.1f}%)"),
+            Static(f"Switch strategy: {self.switch_wins}W-{self.switch_losses}L ({switch_win_rate:.1f}%)"),
+            Static(f"Stay strategy: {self.stay_wins}W-{self.stay_losses}L ({stay_win_rate:.1f}%)"),
             Rule(),
             Static("[bold]Current Round:[/]", classes="round-title"),
             Static(f"Round #{self.current_round}"),
@@ -394,6 +386,12 @@ class InteractiveGameScreen(Screen):
         )
         self.refresh()
     
+    
+    def update_round_display(self):
+        """Update the round information display - now combined with stats"""
+        self.update_stats_display()
+        
+   
     async def show_game_interface(self):
         """Show the main game interface based on current phase"""
         game_container = self.query_one("#game-container", Container)
