@@ -248,7 +248,6 @@ class SimulationScreen(Screen):
     def action_back(self) -> None:
         self.app.pop_screen()
 
-
 class InteractiveGameScreen(Screen):
     """Screen for playing the interactive game"""
     
@@ -261,23 +260,96 @@ class InteractiveGameScreen(Screen):
         self.num_doors = num_doors
         self.game_state: Optional[GameState] = None
         
+        # Game statistics tracking
+        self.total_games = 0
+        self.total_wins = 0
+        self.total_losses = 0
+        self.switch_wins = 0
+        self.switch_losses = 0
+        self.stay_wins = 0
+        self.stay_losses = 0
+        
+        # Round tracking
+        self.current_round = 1
+        self.rounds_played = 0
+        self.rounds_won = 0
+        self.games_in_current_round = 0
+        self.wins_in_current_round = 0
+        
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         yield Container(
             Static(f"[bold blue]Interactive Game[/] - {self.num_doors} doors", classes="title"),
             Rule(),
             Container(id="game-container"),
+            Container(id="stats-container"),
+            Container(id="round-container"),
             classes="game-screen"
         )
         yield Footer()
     
     async def on_mount(self) -> None:
+        await self.start_new_round()
+        self.update_stats_display()
+        self.update_round_display()
+    
+    async def start_new_round(self):
+        """Start a new round of games"""
+        self.current_round += 1
+        self.games_in_current_round = 0
+        self.wins_in_current_round = 0
         await self.start_new_game()
     
     async def start_new_game(self):
-        """Start a new game"""
+        """Start a new game within the current round"""
         self.game_state = GameState(self.num_doors)
+        self.games_in_current_round += 1
         await self.show_door_selection()
+    
+    def update_stats_display(self):
+        """Update the statistics display"""
+        stats_container = self.query_one("#stats-container", Container)
+        stats_container.remove_children()
+        
+        win_rate = (self.total_wins / self.total_games * 100) if self.total_games > 0 else 0
+        switch_win_rate = (self.switch_wins / (self.switch_wins + self.switch_losses) * 100) if (self.switch_wins + self.switch_losses) > 0 else 0
+        stay_win_rate = (self.stay_wins / (self.stay_wins + self.stay_losses) * 100) if (self.stay_wins + self.stay_losses) > 0 else 0
+        
+        stats_container.mount(
+            Rule(),
+            Static("[bold]Overall Statistics:[/]", classes="stats-title"),
+            Static(f"Total games: {self.total_games}"),
+            Static(f"Total wins: {self.total_wins} ({win_rate:.1f}%)"),
+            Static(f"Switch strategy: {self.switch_wins} wins, {self.switch_losses} losses ({switch_win_rate:.1f}%)"),
+            Static(f"Stay strategy: {self.stay_wins} wins, {self.stay_losses} losses ({stay_win_rate:.1f}%)"),
+            Rule()
+        )
+    
+    def update_round_display(self):
+        """Update the round information display"""
+        round_container = self.query_one("#round-container", Container)
+        round_container.remove_children()
+        
+        round_win_rate = (self.wins_in_current_round / self.games_in_current_round * 100) if self.games_in_current_round > 0 else 0
+        overall_round_win_rate = (self.rounds_won / self.rounds_played * 100) if self.rounds_played > 0 else 0
+        
+        round_container.mount(
+            Rule(),
+            Static("[bold]Current Round:[/]", classes="round-title"),
+            Static(f"Round #{self.current_round}"),
+            Static(f"Games in round: {self.games_in_current_round}"),
+            Static(f"Wins in round: {self.wins_in_current_round} ({round_win_rate:.1f}%)"),
+            Rule(),
+            Static("[bold]Round History:[/]", classes="round-title"),
+            Static(f"Rounds played: {self.rounds_played}"),
+            Static(f"Rounds won: {self.rounds_won} ({overall_round_win_rate:.1f}%)"),
+            Horizontal(
+                Button("New Game", id="new-game", classes="round-button"),
+                Button("New Round", id="new-round", classes="round-button"),
+                classes="round-buttons"
+            ),
+            Rule()
+        )
     
     async def show_door_selection(self):
         """Show initial door selection"""
@@ -292,6 +364,7 @@ class InteractiveGameScreen(Screen):
 
         
         await game_container.mount(
+            Static(f"[bold]Round #{self.current_round} - Game #{self.games_in_current_round}[/]"),
             Static("[bold]Choose your initial door:[/]"),
             doors_container,
             Static("🚗 One door has a car, the others have goats! 🐐")
@@ -305,38 +378,65 @@ class InteractiveGameScreen(Screen):
             
         button_id = event.button.id or ""
         
-        # Debug notification to see what's happening
-        self.notify(f"Button clicked: {button_id}")
-        
         if button_id.startswith("door-"):
             door_num = int(button_id.split("-")[1])
             
             if self.game_state.player_choice is None:
                 # Initial door selection
-                self.notify(f"Making initial choice: Door {door_num}")
                 if self.game_state.make_initial_choice(door_num):
-                    self.notify(f"Choice made! Car is at door {self.game_state.car_door}")
                     self.show_monty_opens_doors()
                 else:
                     self.notify("Failed to make initial choice", severity="error")
             elif not self.game_state.game_over:
                 # Final choice
-                self.notify(f"Making final choice: Door {door_num}")
                 if self.game_state.make_final_choice(door_num):
+                    self.record_game_result()
                     self.show_game_result()
                 else:
                     self.notify("Failed to make final choice", severity="error")
         
         elif button_id == "new-game":
-            self.notify("Starting new game")
             self.start_new_game()
+        elif button_id == "new-round":
+            self.start_new_round()
         elif button_id == "stay":
             if self.game_state.player_choice is not None and not self.game_state.game_over:
-                self.notify(f"Staying with door {self.game_state.player_choice}")
                 if self.game_state.make_final_choice(self.game_state.player_choice):
+                    self.record_game_result()
                     self.show_game_result()
                 else:
                     self.notify("Failed to stay with choice", severity="error")
+    
+    def record_game_result(self):
+        """Record the result of the completed game"""
+        if not self.game_state or not self.game_state.game_over:
+            return
+            
+        self.total_games += 1
+        won = self.game_state.did_player_win()
+        
+        if won:
+            self.total_wins += 1
+            self.wins_in_current_round += 1
+        else:
+            self.total_losses += 1
+            
+        # Track strategy results
+        switched = self.game_state.final_choice != self.game_state.player_choice
+        if switched:
+            if won:
+                self.switch_wins += 1
+            else:
+                self.switch_losses += 1
+        else:
+            if won:
+                self.stay_wins += 1
+            else:
+                self.stay_losses += 1
+                
+        # Update the displays
+        self.update_stats_display()
+        self.update_round_display()
     
     async def show_monty_opens_doors(self):
         """Show Monty opening doors"""
@@ -379,6 +479,7 @@ class InteractiveGameScreen(Screen):
         prob_switch = ((self.num_doors - 1) / self.num_doors) * 100
         
         await game_container.mount(
+            Static(f"[bold]Round #{self.current_round} - Game #{self.games_in_current_round}[/]"),
             Static(f"[bold]You chose Door {self.game_state.player_choice}[/]"),
             Static(doors_display),
             Rule(),
@@ -415,6 +516,7 @@ class InteractiveGameScreen(Screen):
         strategy = "SWITCHED" if self.game_state.final_choice != self.game_state.player_choice else "STAYED"
         
         await game_container.mount(
+            Static(f"[bold]Round #{self.current_round} - Game #{self.games_in_current_round}[/]"),
             Static(result_msg, classes="result-message"),
             Rule(),
             Static(doors_reveal),
@@ -425,12 +527,15 @@ class InteractiveGameScreen(Screen):
             Static(f"• Strategy: {strategy}"),
             Static(f"• Car was behind: Door {self.game_state.car_door}"),
             Rule(),
-            Button("Play Again", id="new-game", classes="play-again-button")
+            Horizontal(
+                Button("Play Again", id="new-game", classes="play-again-button"),
+                Button("Next Round", id="new-round", classes="play-again-button"),
+                classes="result-buttons"
+            )
         )
     
     def action_back(self) -> None:
         self.app.pop_screen()
-
 
 class SettingsModal(ModalScreen[tuple[int, int]]):
     """Modal for simulation settings"""
