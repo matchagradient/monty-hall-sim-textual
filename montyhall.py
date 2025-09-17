@@ -860,7 +860,7 @@ class MontyHallApp(App):
         yield Header(show_clock=True)
         yield Container(
             Static("[bold blue]🎰 MONTY HALL PROBLEM SIMULATOR 🎰[/]", classes="title"),
-            Static("[dim]The famous probability puzzle with a beautiful TUI![/]", classes="title"),
+            Static("[dim]The famous probability puzzle![/]", classes="title"),
             Rule(),
             Container(
                 Button("📊 Statistical Simulation", id="simulation", classes="menu-button"),
