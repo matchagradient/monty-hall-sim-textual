@@ -7,7 +7,7 @@ name = "monty-hall-simulator"
 version = "3.0.0"
 description = "A Monty Hall problem simulator with beautiful TUI"
 authors = [
-    {name = "Your Name", email = "your.email@example.com"},
+    {name = "Mike", email = "michaelw.home@gmail.com"},
 ]
 license = {text = "MIT"}
 readme = "README.md"
@@ -29,13 +29,8 @@ dependencies = [
     "textual>=0.41.0",
 ]
 
-[project.urls]
-Homepage = "https://github.com/yourusername/monty-hall-simulator"
-Repository = "https://github.com/yourusername/monty-hall-simulator.git"
-Issues = "https://github.com/yourusername/monty-hall-simulator/issues"
-
-[project.scripts]
-monty-hall = "monty_hall_simulator:main"
+[tool.hatch.build.targets.wheel]
+    packages = ["montyhall.py"]
 
 [tool.uv]
 dev-dependencies = [

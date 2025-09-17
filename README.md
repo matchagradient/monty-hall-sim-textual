@@ -2,7 +2,7 @@
 
 A beautiful terminal-based simulator for the famous Monty Hall probability puzzle, featuring both interactive gameplay and statistical simulations.
 
-![Monty Hall Demo](https://github.com/yourusername/monty-hall-simulator/raw/main/assets/demo.gif)
+![Main Screen](https://github.com/matchagradient/monty-hall-sim-textual/blob/main/images/montyhall-main-screen.png)
 
 ## Features
 
@@ -23,14 +23,14 @@ This project uses [uv](https://github.com/astral-sh/uv) for package management a
 
 2. Clone the repository:
    ```bash
-   git clone https://github.com/matchagradient/monty-hall-sim-textual.git
-   cd monty-hall-simulator
+  git clone https://github.com/matchagradient/monty-hall-sim.git
+  cd monty-hall-sim
    ```
 
-3. Create a virtual environment and install the package:
+3. Create a virtual environment and install dependencies:
    ```bash
    uv venv
-   uv pip install -e .
+  uv pip install -e .
    ```
 
 ## Usage
@@ -40,13 +40,13 @@ This project uses [uv](https://github.com/astral-sh/uv) for package management a
 Launch the interactive terminal user interface:
 
 ```bash
-uv run monty-hall
+uv run python montyhall.py
 ```
 
-Or if you have activated the virtual environment:
+Or if your virtual environment is already activated:
 
 ```bash
-monty-hall
+python montyhall.py
 ```
 
 In the TUI, you can:
@@ -61,13 +61,16 @@ For quick simulations without the TUI, use the command-line options:
 
 ```bash
 # Run a simulation of 10,000 games with 3 doors
-monty-hall -s 10000 -d 3
+python montyhall.py -s 10000 -d 3
 
 # Run a simulation with 50,000 games and 10 doors, with quiet output
-monty-hall -s 50000 -d 10 -q
+python montyhall.py -s 50000 -d 10 -q
+
+# Force TUI explicitly
+python montyhall.py --tui
 
 # See all available options
-monty-hall --help
+python montyhall.py --help
 ```
 
 ## Examples
@@ -75,7 +78,7 @@ monty-hall --help
 ### Example 1: Basic Simulation
 
 ```bash
-$ monty-hall -s 10000 -d 3
+$ python montyhall.py -s 10000 -d 3
 
 Monty Hall Simulation Results:
 ==================================================
@@ -88,7 +91,7 @@ Switch Advantage: 2.0x better
 ### Example 2: More Doors
 
 ```bash
-$ monty-hall -s 10000 -d 10
+$ python montyhall.py -s 10000 -d 10
 
 Monty Hall Simulation Results:
 ==================================================
@@ -137,3 +140,13 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Inspired by the famous probability puzzle and the TV show "Let's Make a Deal"
 - Built with [Textual](https://textual.textualize.io/) for the beautiful terminal interface
 - Uses [uv](https://github.com/astral-sh/uv) for fast Python package management
+
+## Screenshots
+
+Interactive gameplay:
+
+![Interactive](images/montyhall-interactive.png)
+
+Simulation view:
+
+![Simulation](images/montyhall-simulation.png)
