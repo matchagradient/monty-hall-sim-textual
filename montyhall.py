@@ -249,7 +249,7 @@ class SimulationScreen(Screen):
         self.app.pop_screen()
 
 class InteractiveGameScreen(Screen):
-    """Screen for playing the interactive game"""
+    """Screen for playing the interactive Monty Hall game"""
     
     BINDINGS = [
         Binding("escape", "back", "Back to Menu")
@@ -258,9 +258,17 @@ class InteractiveGameScreen(Screen):
     def __init__(self, num_doors: int = 3):
         super().__init__()
         self.num_doors = num_doors
-        self.game_state: Optional[GameState] = None
         
-        # Game statistics tracking
+        # Game state for current game
+        self.car_door = None
+        self.initial_choice = None
+        self.doors_opened_by_host = set()
+        self.final_choice = None
+        self.game_phase = "initial"  # "initial", "host_opens", "final_choice", "game_over"
+        self.countdown_active = False
+        self.countdown_seconds = 0
+        
+        # Overall statistics tracking
         self.total_games = 0
         self.total_wins = 0
         self.total_losses = 0
@@ -271,15 +279,15 @@ class InteractiveGameScreen(Screen):
         
         # Round tracking
         self.current_round = 1
-        self.rounds_played = 0
-        self.rounds_won = 0
         self.games_in_current_round = 0
         self.wins_in_current_round = 0
+        self.rounds_played = 0
+        self.rounds_won = 0
         
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         yield Container(
-            Static(f"[bold blue]Interactive Game[/] - {self.num_doors} doors", classes="title"),
+            Static(f"[bold blue]Interactive Monty Hall Game[/] - {self.num_doors} doors", classes="title"),
             Rule(),
             Container(id="game-container"),
             Container(id="stats-container"),
@@ -289,22 +297,50 @@ class InteractiveGameScreen(Screen):
         yield Footer()
     
     async def on_mount(self) -> None:
-        await self.start_new_round()
+        await self.start_new_game()
         self.update_stats_display()
         self.update_round_display()
     
+    async def start_new_game(self):
+        """Start a new game"""
+        print(f"DEBUG: Starting new game in round {self.current_round}")
+        self.car_door = random.randint(0, self.num_doors - 1)
+        self.initial_choice = None
+        self.doors_opened_by_host = set()
+        self.final_choice = None
+        self.game_phase = "initial"
+        self.games_in_current_round += 1
+        print(f"DEBUG: Car is behind door {self.car_door}")
+        print(f"DEBUG: Game #{self.games_in_current_round} in round {self.current_round}")
+        await self.show_game_interface()
+    
     async def start_new_round(self):
-        """Start a new round of games"""
+        """Start a new round - check if current round was won, then reset round stats"""
+        print(f"DEBUG: Starting new round (was round {self.current_round})")
+        # Check if current round was won (player won more than half the games)
+        if self.games_in_current_round > 0:
+            self.rounds_played += 1
+            if self.wins_in_current_round > self.games_in_current_round / 2:
+                self.rounds_won += 1
+                print(f"DEBUG: Round {self.current_round} was WON ({self.wins_in_current_round}/{self.games_in_current_round})")
+            else:
+                print(f"DEBUG: Round {self.current_round} was LOST ({self.wins_in_current_round}/{self.games_in_current_round})")
+        
+        # Start new round
         self.current_round += 1
         self.games_in_current_round = 0
         self.wins_in_current_round = 0
+        print(f"DEBUG: Now starting round {self.current_round}")
+        self.update_round_display()
         await self.start_new_game()
     
-    async def start_new_game(self):
-        """Start a new game within the current round"""
-        self.game_state = GameState(self.num_doors)
-        self.games_in_current_round += 1
-        await self.show_door_selection()
+    async def restart_current_round(self):
+        """Restart the current round - reset round stats but keep round number"""
+        print(f"DEBUG: Restarting current round {self.current_round}")
+        self.games_in_current_round = 0
+        self.wins_in_current_round = 0
+        self.update_round_display()
+        await self.start_new_game()
     
     def update_stats_display(self):
         """Update the statistics display"""
@@ -320,10 +356,11 @@ class InteractiveGameScreen(Screen):
             Static("[bold]Overall Statistics:[/]", classes="stats-title"),
             Static(f"Total games: {self.total_games}"),
             Static(f"Total wins: {self.total_wins} ({win_rate:.1f}%)"),
-            Static(f"Switch strategy: {self.switch_wins} wins, {self.switch_losses} losses ({switch_win_rate:.1f}%)"),
-            Static(f"Stay strategy: {self.stay_wins} wins, {self.stay_losses} losses ({stay_win_rate:.1f}%)"),
+            Static(f"Switch strategy: {self.switch_wins}W-{self.switch_losses}L ({switch_win_rate:.1f}%)"),
+            Static(f"Stay strategy: {self.stay_wins}W-{self.stay_losses}L ({stay_win_rate:.1f}%)"),
             Rule()
         )
+        self.refresh()
     
     def update_round_display(self):
         """Update the round information display"""
@@ -333,6 +370,15 @@ class InteractiveGameScreen(Screen):
         round_win_rate = (self.wins_in_current_round / self.games_in_current_round * 100) if self.games_in_current_round > 0 else 0
         overall_round_win_rate = (self.rounds_won / self.rounds_played * 100) if self.rounds_played > 0 else 0
         
+        # Create buttons container
+        buttons_container = Horizontal(
+            Button("New Game", id="new-game", classes="round-button"),
+            Button("Restart Round", id="restart-round", classes="round-button"),
+            Button("New Round", id="new-round", classes="round-button"),
+            classes="round-buttons"
+        )
+        
+        # Mount all elements
         round_container.mount(
             Rule(),
             Static("[bold]Current Round:[/]", classes="round-title"),
@@ -343,196 +389,280 @@ class InteractiveGameScreen(Screen):
             Static("[bold]Round History:[/]", classes="round-title"),
             Static(f"Rounds played: {self.rounds_played}"),
             Static(f"Rounds won: {self.rounds_won} ({overall_round_win_rate:.1f}%)"),
-            Horizontal(
-                Button("New Game", id="new-game", classes="round-button"),
-                Button("New Round", id="new-round", classes="round-button"),
-                classes="round-buttons"
-            ),
+            buttons_container,
             Rule()
         )
+        self.refresh()
     
-    async def show_door_selection(self):
-        """Show initial door selection"""
+    async def show_game_interface(self):
+        """Show the main game interface based on current phase"""
         game_container = self.query_one("#game-container", Container)
         game_container.remove_children()
+        
+        if self.game_phase == "initial":
+            await self.show_initial_choice()
+        elif self.game_phase == "host_opens":
+            await self.show_host_opens()
+        elif self.game_phase == "final_choice":
+            await self.show_final_choice()
+        elif self.game_phase == "game_over":
+            await self.show_game_result()
+    
+    async def show_initial_choice(self):
+        """Show initial door selection phase"""
+        game_container = self.query_one("#game-container", Container)
         
         # Create door buttons
         door_buttons = []
         for i in range(self.num_doors):
             door_buttons.append(Button(f"Door {i}", id=f"door-{i}", classes="door-button"))
         doors_container = Horizontal(*door_buttons, classes="doors-container")
-
+        
+        prob_correct = (1 / self.num_doors) * 100
+        prob_others = ((self.num_doors - 1) / self.num_doors) * 100
         
         await game_container.mount(
             Static(f"[bold]Round #{self.current_round} - Game #{self.games_in_current_round}[/]"),
-            Static("[bold]Choose your initial door:[/]"),
+            Static("[bold]Phase 1: Choose your initial door[/]"),
             doors_container,
-            Static("🚗 One door has a car, the others have goats! 🐐")
+            Static("🚗 One door has a car, the others have goats! 🐐"),
+            Rule(),
+            Static(f"💡 [dim]Your choice has {prob_correct:.1f}% chance of being correct[/]"),
+            Static(f"💡 [dim]The other {self.num_doors-1} doors combined have {prob_others:.1f}% chance[/]")
         )
     
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle button presses"""
-        if not self.game_state:
-            self.notify("No game state!", severity="error")
-            return
-            
-        button_id = event.button.id or ""
-        
-        if button_id.startswith("door-"):
-            door_num = int(button_id.split("-")[1])
-            
-            if self.game_state.player_choice is None:
-                # Initial door selection
-                if self.game_state.make_initial_choice(door_num):
-                    self.show_monty_opens_doors()
-                else:
-                    self.notify("Failed to make initial choice", severity="error")
-            elif not self.game_state.game_over:
-                # Final choice
-                if self.game_state.make_final_choice(door_num):
-                    self.record_game_result()
-                    self.show_game_result()
-                else:
-                    self.notify("Failed to make final choice", severity="error")
-        
-        elif button_id == "new-game":
-            self.start_new_game()
-        elif button_id == "new-round":
-            self.start_new_round()
-        elif button_id == "stay":
-            if self.game_state.player_choice is not None and not self.game_state.game_over:
-                if self.game_state.make_final_choice(self.game_state.player_choice):
-                    self.record_game_result()
-                    self.show_game_result()
-                else:
-                    self.notify("Failed to stay with choice", severity="error")
-    
-    def record_game_result(self):
-        """Record the result of the completed game"""
-        if not self.game_state or not self.game_state.game_over:
-            return
-            
-        self.total_games += 1
-        won = self.game_state.did_player_win()
-        
-        if won:
-            self.total_wins += 1
-            self.wins_in_current_round += 1
-        else:
-            self.total_losses += 1
-            
-        # Track strategy results
-        switched = self.game_state.final_choice != self.game_state.player_choice
-        if switched:
-            if won:
-                self.switch_wins += 1
-            else:
-                self.switch_losses += 1
-        else:
-            if won:
-                self.stay_wins += 1
-            else:
-                self.stay_losses += 1
-                
-        # Update the displays
-        self.update_stats_display()
-        self.update_round_display()
-    
-    async def show_monty_opens_doors(self):
-        """Show Monty opening doors"""
-        if not self.game_state:
-            return
-            
-        self.game_state.open_doors_by_monty()
+    async def show_host_opens(self):
+        """Show host opening doors phase"""
         game_container = self.query_one("#game-container", Container)
-        game_container.remove_children()
+        
+        # Host opens N-2 doors (all doors except player's choice and one other)
+        doors_to_keep_closed = {self.car_door}
+        if self.initial_choice != self.car_door:
+            # If player didn't choose car, keep their door closed too
+            doors_to_keep_closed.add(self.initial_choice)
+        else:
+            # If player chose car, keep one random other door closed
+            other_doors = [i for i in range(self.num_doors) if i != self.car_door]
+            doors_to_keep_closed.add(random.choice(other_doors))
+        
+        # Open all other doors
+        for door in range(self.num_doors):
+            if door not in doors_to_keep_closed:
+                self.doors_opened_by_host.add(door)
         
         # Show door states
-        doors_display = ""
+        door_displays = []
         for i in range(self.num_doors):
-            if i == self.game_state.player_choice:
-                doors_display += f"[bold green]Door {i}: YOUR CHOICE[/]  "
-            elif i in self.game_state.doors_opened:
-                doors_display += f"[red]Door {i}: 🐐 GOAT[/]  "
+            if i == self.initial_choice:
+                door_displays.append(f"[bold green]Door {i}: YOUR CHOICE[/]")
+            elif i in self.doors_opened_by_host:
+                door_displays.append(f"[red]Door {i}: 🐐 GOAT (opened by host)[/]")
             else:
-                doors_display += f"[yellow]Door {i}: ? UNKNOWN[/]  "
+                door_displays.append(f"[yellow]Door {i}: ? UNKNOWN[/]")
         
-        available_doors = self.game_state.get_available_doors()
-        switch_options = [d for d in available_doors if d != self.game_state.player_choice]
+        doors_text = "\n".join(door_displays)
         
-        buttons_container = Horizontal(classes="choice-buttons")
+        remaining_doors = [i for i in range(self.num_doors) if i not in self.doors_opened_by_host]
+        other_door = [d for d in remaining_doors if d != self.initial_choice][0]
         
-        # Add stay button
-        buttons_container.mount(
-            Button(f"Stay with Door {self.game_state.player_choice}", 
-                  id="stay", classes="choice-button stay-button")
+        await game_container.mount(
+            Static(f"[bold]Round #{self.current_round} - Game #{self.games_in_current_round}[/]"),
+            Static("[bold]Phase 2: Host opens doors with goats[/]"),
+            Static(doors_text),
+            Rule(),
+            Static(f"[bold]The host opened {len(self.doors_opened_by_host)} doors with goats![/]"),
+            Static(f"[bold]Only 2 doors remain: your choice (Door {self.initial_choice}) and Door {other_door}[/]"),
+            Button("Continue to Final Choice", id="continue", classes="continue-button")
         )
+    
+    async def show_final_choice(self):
+        """Show final choice phase (stay or switch)"""
+        game_container = self.query_one("#game-container", Container)
         
-        # Add switch buttons
-        for door in switch_options:
-            buttons_container.mount(
-                Button(f"Switch to Door {door}", 
-                      id=f"door-{door}", classes="choice-button switch-button")
-            )
+        remaining_doors = [i for i in range(self.num_doors) if i not in self.doors_opened_by_host]
+        other_door = [d for d in remaining_doors if d != self.initial_choice][0]
+        
+        # Show door states
+        door_displays = []
+        for i in range(self.num_doors):
+            if i == self.initial_choice:
+                door_displays.append(f"[bold green]Door {i}: YOUR ORIGINAL CHOICE[/]")
+            elif i in self.doors_opened_by_host:
+                door_displays.append(f"[dim red]Door {i}: 🐐 GOAT (opened)[/]")
+            elif i == other_door:
+                door_displays.append(f"[bold yellow]Door {i}: SWITCH OPTION[/]")
+        
+        doors_text = "\n".join(door_displays)
         
         prob_stay = (1 / self.num_doors) * 100
         prob_switch = ((self.num_doors - 1) / self.num_doors) * 100
         
         await game_container.mount(
             Static(f"[bold]Round #{self.current_round} - Game #{self.games_in_current_round}[/]"),
-            Static(f"[bold]You chose Door {self.game_state.player_choice}[/]"),
-            Static(doors_display),
+            Static("[bold]Phase 3: Final Decision - Stay or Switch?[/]"),
+            Static(doors_text),
             Rule(),
-            Static("[bold]Monty revealed the goats! Now choose:[/]"),
-            buttons_container,
+            Static("[bold]Now you must make your final choice:[/]"),
+            Horizontal(
+                Button(f"STAY with Door {self.initial_choice}", id="stay", classes="stay-button"),
+                Button(f"SWITCH to Door {other_door}", id="switch", classes="switch-button")
+            ),
             Rule(),
-            Static(f"💡 [dim]Probability hint: Stay = {prob_stay:.1f}%, Switch = {prob_switch:.1f}%[/]")
+            Static(f"💡 [dim]Probability of winning if you STAY: {prob_stay:.1f}%[/]"),
+            Static(f"💡 [dim]Probability of winning if you SWITCH: {prob_switch:.1f}%[/]")
         )
     
     async def show_game_result(self):
         """Show the final game result"""
-        if not self.game_state:
-            return
-            
         game_container = self.query_one("#game-container", Container)
-        game_container.remove_children()
         
-        won = self.game_state.did_player_win()
+        if self.countdown_active:
+            if self.final_choice == self.car_door:
+                status_msg = f"[bold green]🎉 YOU WON! 🎉 Next game starting in {self.countdown_seconds} seconds...[/]"
+            else:
+                status_msg = f"[bold red]😞 You lost. Next game starting in {self.countdown_seconds} seconds...[/]"
+        else:
+            won = (self.final_choice == self.car_door)
+            if won:
+                status_msg = "[bold green]🎉 CONGRATULATIONS! YOU WON THE CAR! 🎉[/]"
+            else:
+                status_msg = "[bold red]😞 Sorry, you got a goat. Better luck next time![/]"
         
         # Show all door contents
-        doors_reveal = ""
+        door_reveals = []
         for i in range(self.num_doors):
-            if i == self.game_state.car_door:
-                doors_reveal += f"[bold green]Door {i}: 🚗 CAR[/]  "
+            if i == self.car_door:
+                door_reveals.append(f"[bold green]Door {i}: 🚗 CAR[/]")
             else:
-                doors_reveal += f"[red]Door {i}: 🐐 GOAT[/]  "
+                door_reveals.append(f"[red]Door {i}: 🐐 GOAT[/]")
         
-        result_msg = ""
-        if won:
-            result_msg = "[bold green]🎉 CONGRATULATIONS! YOU WON THE CAR! 🎉[/]"
+        doors_text = "\n".join(door_reveals)
+        
+        strategy = "SWITCHED" if self.final_choice != self.initial_choice else "STAYED"
+        
+        if not self.countdown_active:
+            buttons = Horizontal(
+                Button("New Game", id="new-game", classes="play-again-button"),
+                Button("Restart Round", id="restart-round", classes="play-again-button"),
+                Button("New Round", id="new-round", classes="play-again-button"),
+                classes="result-buttons"
+            )
         else:
-            result_msg = "[bold red]😔 Sorry, you got a goat. Better luck next time![/]"
-        
-        strategy = "SWITCHED" if self.game_state.final_choice != self.game_state.player_choice else "STAYED"
+            buttons = Container()  # No buttons during countdown
         
         await game_container.mount(
             Static(f"[bold]Round #{self.current_round} - Game #{self.games_in_current_round}[/]"),
-            Static(result_msg, classes="result-message"),
+            Static(status_msg, classes="result-message"),
             Rule(),
-            Static(doors_reveal),
+            Static("[bold]Final Results:[/]"),
+            Static(doors_text),
             Rule(),
             Static(f"[bold]Your journey:[/]"),
-            Static(f"• Initial choice: Door {self.game_state.player_choice}"),
-            Static(f"• Final choice: Door {self.game_state.final_choice}"),
+            Static(f"• Initial choice: Door {self.initial_choice}"),
+            Static(f"• Final choice: Door {self.final_choice}"),
             Static(f"• Strategy: {strategy}"),
-            Static(f"• Car was behind: Door {self.game_state.car_door}"),
+            Static(f"• Car was behind: Door {self.car_door}"),
             Rule(),
-            Horizontal(
-                Button("Play Again", id="new-game", classes="play-again-button"),
-                Button("Next Round", id="new-round", classes="play-again-button"),
-                classes="result-buttons"
-            )
+            buttons
         )
+    
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button presses"""
+        button_id = event.button.id or ""
+        print(f"DEBUG: Button pressed: {button_id}")
+        print(f"DEBUG: game_phase = {self.game_phase}")
+        print(f"DEBUG: countdown_active = {self.countdown_active}")
+        
+        if self.countdown_active:
+            print("DEBUG: Ignoring button press - countdown active")
+            return
+            
+        if button_id.startswith("door-") and self.game_phase == "initial":
+            door_num = int(button_id.split("-")[1])
+            print(f"DEBUG: Initial choice - Door {door_num}")
+            self.initial_choice = door_num
+            self.game_phase = "host_opens"
+            self.call_later(self.show_game_interface)
+            
+        elif button_id == "continue" and self.game_phase == "host_opens":
+            print("DEBUG: Moving to final choice phase")
+            self.game_phase = "final_choice"
+            self.call_later(self.show_game_interface)
+            
+        elif button_id == "stay" and self.game_phase == "final_choice":
+            print("DEBUG: Player chose to STAY")
+            self.final_choice = self.initial_choice
+            self.record_game_result("stay")
+            
+        elif button_id == "switch" and self.game_phase == "final_choice":
+            print("DEBUG: Player chose to SWITCH")
+            remaining_doors = [i for i in range(self.num_doors) if i not in self.doors_opened_by_host]
+            self.final_choice = [d for d in remaining_doors if d != self.initial_choice][0]
+            self.record_game_result("switch")
+            
+        elif button_id == "new-game":
+            print("DEBUG: New game button pressed")
+            self.call_later(self.start_new_game)
+        elif button_id == "restart-round":
+            print("DEBUG: Restart round button pressed")
+            self.call_later(self.restart_current_round)
+        elif button_id == "new-round":
+            print("DEBUG: New round button pressed")
+            self.call_later(self.start_new_round)
+        else:
+            print(f"DEBUG: Unhandled button: {button_id}")
+    
+    def record_game_result(self, strategy):
+        """Record the result of the completed game"""
+        print(f"DEBUG: Recording game result - strategy: {strategy}")
+        
+        self.total_games += 1
+        won = (self.final_choice == self.car_door)
+        
+        if won:
+            self.total_wins += 1
+            self.wins_in_current_round += 1
+            if strategy == "switch":
+                self.switch_wins += 1
+            else:
+                self.stay_wins += 1
+        else:
+            self.total_losses += 1
+            if strategy == "switch":
+                self.switch_losses += 1
+            else:
+                self.stay_losses += 1
+        
+        self.game_phase = "game_over"
+        
+        # Update displays
+        self.update_stats_display()
+        self.update_round_display()
+        
+        # Always start countdown (for both wins and losses)
+        self.run_worker(self.start_game_countdown(won), exclusive=True)
+    
+    async def start_game_countdown(self, won):
+        """Start 5-second countdown after game ends, then start new game"""
+        print(f"DEBUG: Starting game countdown - won: {won}")
+        self.countdown_active = True
+        self.countdown_seconds = 5
+        
+        # Update displays to show the result
+        await self.show_game_interface()
+        
+        # Countdown loop
+        for i in range(5, 0, -1):
+            print(f"DEBUG: Countdown: {i}")
+            self.countdown_seconds = i
+            await self.show_game_interface()
+            await asyncio.sleep(1)
+        
+        # Reset countdown and start new game
+        print("DEBUG: Countdown finished, starting new game")
+        self.countdown_active = False
+        self.countdown_seconds = 0
+        await self.start_new_game()
     
     def action_back(self) -> None:
         self.app.pop_screen()
@@ -640,20 +770,25 @@ class MontyHallApp(App):
     
     .choice-button {
         margin: 0 1;
+        min-width: 30;  /* Increased minimum width */
+        text-align: center;  /* Center the text */
     }
     
     .stay-button {
         background: red 30%;
+        color: white;  /* Added white text color */
     }
     
     .switch-button {
         background: green 30%;
+        color: white;  /* Added white text color */
     }
     
     .play-again-button {
         dock: bottom;
         margin: 1;
         background: blue;
+        color: white;  /* Added white text color */
     }
     
     .result-message {
@@ -686,6 +821,32 @@ class MontyHallApp(App):
     }
     
     .stats-container {
+        padding: 1;
+    }
+    
+    .stats-title {
+        text-align: center;
+        padding: 1;
+    }
+    
+    .round-title {
+        text-align: center;
+        padding: 1;
+    }
+    
+    .round-buttons {
+        align: center middle;
+        padding: 1;
+    }
+    
+    .round-button {
+        margin: 0 1;
+        background: $primary 30%;
+        color: white;  /* Added white text color */
+    }
+    
+    .result-buttons {
+        align: center middle;
         padding: 1;
     }
     """
